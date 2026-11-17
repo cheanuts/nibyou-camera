@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#171717">
+<title>二秒カメラ | POC</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,sans-serif;background:#171717;color:#f5f5f5}
+*{box-sizing:border-box}body{margin:0;padding:20px;max-width:760px;margin-inline:auto}
+h1{font-size:1.7rem;margin:.2rem 0}.sub{color:#bbb;margin:0 0 18px}
+button{border:0;border-radius:12px;padding:13px 18px;font-size:1rem;font-weight:650;background:#f4c95d;color:#171717}
+button:disabled{opacity:.45}label{display:block;margin:16px 0 6px;color:#ddd}
+input{width:100%;accent-color:#f4c95d}video{width:100%;background:#000;border-radius:14px;max-height:58vh;object-fit:contain}
+#status{padding:12px;background:#292929;border-radius:10px;margin:12px 0;color:#f4c95d}
+#gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
+figure{margin:0}figure img{width:100%;border-radius:10px}figcaption{font-size:.8rem;color:#bbb;margin-top:4px}
+small{color:#aaa;line-height:1.6;display:block;margin-top:16px}
+</style>
+</head>
+<body>
+<h1>二秒カメラ</h1>
+<p class="sub">動きがピタッと止まった瞬間を見つけて、写真に残す実験版</p>
+<button id="start">カメラを起動</button>
+<div id="status" role="status">起動ボタンを押してください。カメラの使用を許可してください。</div>
+<video id="video" autoplay playsinline muted></video>
+<label for="hold">静止と判定する時間：<strong id="holdValue">2.0秒</strong></label>
+<input id="hold" type="range" min="1" max="3" step=".5" value="2">
+<label for="sensitivity">静止判定の感度：<strong id="sensValue">標準</strong></label>
+<input id="sensitivity" type="range" min="0.008" max="0.04" step=".004" value=".018">
+<h2>撮影した写真</h2>
+<div id="gallery"></div>
+<small>このPOCはカメラ映像を端末内で一時解析し、静止画だけを画面に追加します。動画ファイルは保存・送信しません。処理はブラウザ内で行います。カメラを止めるときはページを閉じてください。iPadではHTTPSで開いてください。</small>
+<script type="module">
+import { PoseLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+const video=document.querySelector("#video"), status=document.querySelector("#status");
+const start=document.querySelector("#start"), hold=document.querySelector("#hold");
+const holdValue=document.querySelector("#holdValue"), sensitivity=document.querySelector("#sensitivity"), sensValue=document.querySelector("#sensValue");
+let landmarker, stream, stableSince=null, lastSample=0, previous=null, captured=false, busy=false;
+const canvas=document.createElement("canvas"), ctx=canvas.getContext("2d");
+hold.addEventListener("input",()=>holdValue.textContent=Number(hold.value).toFixed(1)+"秒");
+sensitivity.addEventListener("input",()=>sensValue.textContent=Number(sensitivity.value)<.016?"高感度":Number(sensitivity.value)>.024?"低感度":"標準");
+function say(s){status.textContent=s}
+async function setup(){
+  say("姿勢解析モデルを読み込んでいます…");
+  const vision=await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+  landmarker=await PoseLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:"https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",delegate:"GPU"},runningMode:"VIDEO",numPoses:1});
+}
+function capture(){
+  if(!video.videoWidth)return;
+  canvas.width=video.videoWidth;canvas.height=video.videoHeight;
+  ctx.drawImage(video,0,0,canvas.width,canvas.height);
+  const img=document.createElement("img");img.src=canvas.toDataURL("image/jpeg",.9);
+  const figure=document.createElement("figure"),caption=document.createElement("figcaption");
+  caption.textContent=new Date().toLocaleTimeString("ja-JP")+" に撮影";
+  figure.append(img,caption);document.querySelector("#gallery").prepend(figure);
+  say("静止を検知して写真を追加しました。次のポーズを待っています。");
+}
+function loop(now){
+  if(!stream)return;
+  if(video.readyState>=2 && now-lastSample>90 && !busy){
+    lastSample=now;busy=true;
+    try{
+      const result=landmarker.detectForVideo(video,now), pose=result.landmarks?.[0];
+      if(pose){
+        const points=pose.filter((p,i)=>i!==0 && i!==1 && i!==2 && i!==3 && i!==4 && (p.visibility??1)>.45);
+        const current=points.flatMap(p=>[p.x,p.y]);
+        if(previous && current.length===previous.length){
+          let sum=0;for(let i=0;i<current.length;i++)sum+=(current[i]-previous[i])**2;
+          const movement=Math.sqrt(sum/current.length);
+          if(movement<Number(sensitivity.value)){
+            if(stableSince===null)stableSince=now;
+            const elapsed=(now-stableSince)/1000;
+            say("静止を検知中… "+elapsed.toFixed(1)+" / "+Number(hold.value).toFixed(1)+"秒");
+            if(elapsed>=Number(hold.value) && !captured){capture();captured=true;}
+          }else{stableSince=null;captured=false;say("動きを検知中。ポーズが止まると撮影します。");}
+        }else{stableSince=null;}
+        previous=current;
+      }else{stableSince=null;previous=null;say("人物が見つかりません。全身が映る位置に立ってください。");}
+    }catch(e){say("姿勢解析中にエラーが発生しました: "+e.message);}
+    busy=false;
+  }
+  requestAnimationFrame(loop);
+}
+start.addEventListener("click",async()=>{
+  start.disabled=true;
+  try{
+    await setup();
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:{ideal:1280},height:{ideal:720}},audio:false});
+    video.srcObject=stream;await video.play();say("準備完了。全身が映る位置でポーズを試してください。");
+    requestAnimationFrame(loop);
+  }catch(e){say("起動できませんでした: "+e.message+"。HTTPSとカメラ許可を確認してください。");start.disabled=false;}
+});
+</script>
+</body>
+</html>
