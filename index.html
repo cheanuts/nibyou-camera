@@ -17,6 +17,7 @@ input{width:100%;accent-color:#f4c95d}video{width:100%;background:#000;border-ra
 figure{margin:0}figure img{width:100%;border-radius:10px}figcaption{font-size:.8rem;color:#bbb;margin-top:4px}
 small{color:#aaa;line-height:1.6;display:block;margin-top:16px}
 a{color:#f4c95d}
+#clear{background:#444;color:#f5f5f5;padding:9px 14px;font-size:.9rem;margin-bottom:6px}
 </style>
 </head>
 <body>
@@ -31,6 +32,7 @@ a{color:#f4c95d}
 <label for="sensitivity">静止判定の感度：<strong id="sensValue">標準</strong></label>
 <input id="sensitivity" type="range" min="0.008" max="0.04" step=".004" value=".018">
 <h2>撮影した写真</h2>
+<button id="clear" type="button">保存した写真をすべて削除</button>
 <div id="gallery"></div>
 <small>このPOCはカメラ映像を端末内で一時解析し、静止画だけを画面に追加します。動画ファイルは保存・送信しません。処理はブラウザ内で行います。カメラを止めるときはページを閉じてください。iPadではHTTPSで開いてください。</small>
 <script type="module">
@@ -48,16 +50,34 @@ async function setup(){
   const vision=await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
   landmarker=await PoseLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:"https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",delegate:"GPU"},runningMode:"VIDEO",numPoses:1});
 }
+const STORE_KEY="nibyou-camera-photos";
+function loadPhotos(){try{return JSON.parse(localStorage.getItem(STORE_KEY))||[]}catch(e){return[]}}
+function addToGallery(src,captionText){
+  const img=document.createElement("img");img.src=src;
+  const figure=document.createElement("figure"),caption=document.createElement("figcaption");
+  caption.textContent=captionText;
+  figure.append(img,caption);document.querySelector("#gallery").prepend(figure);
+}
+function savePhoto(src,captionText){
+  const items=loadPhotos();items.push({s:src,t:captionText});
+  try{localStorage.setItem(STORE_KEY,JSON.stringify(items));}
+  catch(e){
+    let saved=false;
+    while(items.length>1){items.shift();try{localStorage.setItem(STORE_KEY,JSON.stringify(items));saved=true;break;}catch(_){}}
+    if(!saved)say("保存容量がいっぱいで、この写真は端末に保存できませんでした。");
+  }
+}
 function capture(){
   if(!video.videoWidth)return;
   canvas.width=video.videoWidth;canvas.height=video.videoHeight;
   ctx.drawImage(video,0,0,canvas.width,canvas.height);
-  const img=document.createElement("img");img.src=canvas.toDataURL("image/jpeg",.9);
-  const figure=document.createElement("figure"),caption=document.createElement("figcaption");
-  caption.textContent=new Date().toLocaleTimeString("ja-JP")+" に撮影";
-  figure.append(img,caption);document.querySelector("#gallery").prepend(figure);
+  const src=canvas.toDataURL("image/jpeg",.85);
+  const captionText=new Date().toLocaleTimeString("ja-JP")+" に撮影";
+  addToGallery(src,captionText);savePhoto(src,captionText);
   say("静止を検知して写真を追加しました。次のポーズを待っています。");
 }
+for(const it of loadPhotos())addToGallery(it.s,it.t);
+document.querySelector("#clear").addEventListener("click",()=>{localStorage.removeItem(STORE_KEY);document.querySelector("#gallery").innerHTML="";say("保存した写真をすべて削除しました。");});
 const FIXED=[11,12,13,14,15,16,23,24,25,26,27,28];
 let emaMovement=null, overFrames=0;
 function loop(now){
