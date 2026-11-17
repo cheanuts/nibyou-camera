@@ -59,22 +59,30 @@ function addToGallery(src,captionText){
   figure.append(img,caption);document.querySelector("#gallery").prepend(figure);
 }
 function savePhoto(src,captionText){
-  const items=loadPhotos();items.push({s:src,t:captionText});
-  try{localStorage.setItem(STORE_KEY,JSON.stringify(items));}
-  catch(e){
-    let saved=false;
-    while(items.length>1){items.shift();try{localStorage.setItem(STORE_KEY,JSON.stringify(items));saved=true;break;}catch(_){}}
-    if(!saved)say("保存容量がいっぱいで、この写真は端末に保存できませんでした。");
+  const items=loadPhotos();
+  items.unshift({s:src,t:captionText});
+  items.splice(8);
+  while(items.length){
+    try{localStorage.setItem(STORE_KEY,JSON.stringify(items));return true;}
+    catch(e){
+      if(e.name!=="QuotaExceededError" && e.name!=="NS_ERROR_DOM_QUOTA_REACHED"){
+        say("端末への保存に失敗しました: "+e.message);return false;
+      }
+      items.pop();
+    }
   }
+  say("端末の保存容量が不足しています。この写真は画面表示のみです。");
+  return false;
 }
 function capture(){
   if(!video.videoWidth)return;
   canvas.width=video.videoWidth;canvas.height=video.videoHeight;
   ctx.drawImage(video,0,0,canvas.width,canvas.height);
-  const src=canvas.toDataURL("image/jpeg",.85);
+  const src=canvas.toDataURL("image/jpeg",.72);
   const captionText=new Date().toLocaleTimeString("ja-JP")+" に撮影";
-  addToGallery(src,captionText);savePhoto(src,captionText);
-  say("静止を検知して写真を追加しました。次のポーズを待っています。");
+  addToGallery(src,captionText);
+  const saved=savePhoto(src,captionText);
+  say(saved?"静止を検知し、写真を端末内に保存しました。再読み込み後も表示されます。":"写真は画面に追加しましたが、端末への保存はできませんでした。");
 }
 for(const it of loadPhotos())addToGallery(it.s,it.t);
 document.querySelector("#clear").addEventListener("click",()=>{localStorage.removeItem(STORE_KEY);document.querySelector("#gallery").innerHTML="";say("保存した写真をすべて削除しました。");});
