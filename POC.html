@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="light dark" />
+<link rel="icon" href="data:," />
+<title>二秒カメラ</title>
+<style>
+  :root{
+    --bg:#f3f3f1; --surface:#ffffff; --surface2:#ececea; --ink:#191919; --muted:#5c5c58;
+    --line:#d8d8d3; --accent:#d92b20; --accent-ink:#ffffff; --ok:#1d7a4f; --warn:#b26a00;
+    --stage:#101010; --stage-ink:#f5f5f3;
+    --radius:14px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#131313; --surface:#1e1e1e; --surface2:#2a2a2a; --ink:#f2f2ef; --muted:#a9a9a3;
+      --line:#3a3a38; --accent:#ff5147; --accent-ink:#ffffff; --ok:#4cc38a; --warn:#e5a13d;
+      --stage:#000000; --stage-ink:#f5f5f3;
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Noto Sans JP",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    line-height:1.6; -webkit-text-size-adjust:100%;
+  }
+  button,[role="button"],select,input[type="file"]+label{min-height:44px}
+  .wrap{max-width:1080px;margin:0 auto;padding:20px 16px 56px}
+  header.top{padding:8px 0 18px;border-bottom:2px solid var(--ink);margin-bottom:20px}
+  header.top h1{font-size:clamp(28px,6vw,40px);line-height:1.15;margin:0;font-weight:800;letter-spacing:.02em}
+  header.top h1 .poc{font-size:13px;vertical-align:middle;background:var(--accent);color:#fff;padding:3px 9px;border-radius:999px;margin-left:10px;font-weight:700;letter-spacing:.08em}
+  header.top p.lead{margin:8px 0 0;font-size:clamp(15px,3.4vw,18px);color:var(--ink);font-weight:600}
+  header.top p.sub{margin:4px 0 0;font-size:13.5px;color:var(--muted)}
+  .layout{display:grid;grid-template-columns:1fr;gap:18px}
+  @media(min-width:880px){ .layout{grid-template-columns:minmax(0,1.55fr) minmax(280px,1fr)} }
+  /* ---------- stage ---------- */
+  .stage{
+    position:relative;background:var(--stage);border-radius:var(--radius);overflow:hidden;
+    aspect-ratio:4/3;width:100%;
+  }
+  .stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+  .stage video.mirror{transform:scaleX(-1)}
+  .stage .placeholder{
+    position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:10px;text-align:center;padding:24px;color:var(--stage-ink);
+  }
+  .stage .placeholder .big{font-size:17px;font-weight:700}
+  .stage .placeholder .small{font-size:13px;opacity:.75;max-width:420px}
+  .pill{
+    position:absolute;top:12px;left:12px;display:inline-flex;align-items:center;gap:8px;
+    background:rgba(0,0,0,.62);color:#fff;font-size:13px;font-weight:700;
+    padding:7px 12px;border-radius:999px;backdrop-filter:blur(4px);z-index:3;
+  }
+  .pill .dot{width:10px;height:10px;border-radius:50%;background:#8a8a8a;flex:none}
+  .pill[data-state="moving"] .dot{background:#ffb020}
+  .pill[data-state="still"] .dot{background:#37d67a}
+  .pill[data-state="shot"] .dot{background:var(--accent)}
+  .pill[data-state="wait"] .dot{background:#6ab0ff}
+  .count-badge{
+    position:absolute;top:12px;right:12px;background:rgba(0,0,0,.62);color:#fff;z-index:3;
+    font-size:13px;font-weight:700;padding:7px 12px;border-radius:999px;backdrop-filter:blur(4px);
+  }
+  .stillbar{
+    position:absolute;left:0;right:0;bottom:0;z-index:3;padding:10px 14px 12px;
+    background:linear-gradient(to top, rgba(0,0,0,.72), rgba(0,0,0,0));color:#fff;
+  }
+  .stillbar .label{display:flex;justify-content:space-between;font-size:12.5px;font-weight:700;margin-bottom:6px}
+  .stillbar .track{height:10px;background:rgba(255,255,255,.25);border-radius:999px;overflow:hidden}
+  .stillbar .fill{height:100%;width:0%;background:#37d67a;border-radius:999px;transition:width .12s linear}
+  .stillbar.done .fill{background:var(--accent)}
+  .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:4}
+  .flash.go{animation:flashA .45s ease-out}
+  @keyframes flashA{0%{opacity:.9}100%{opacity:0}}
+  @media (prefers-reduced-motion: reduce){ .flash.go{animation:none} }
+  /* ---------- meter ---------- */
+  .meter-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin-top:14px}
+  .meter-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .meter-head .t{font-weight:800;font-size:14px}
+  .meter-head .v{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .meter-track{position:relative;height:14px;background:var(--surface2);border-radius:999px;margin-top:30px;overflow:visible}
+  .meter-fill{height:100%;width:0%;background:var(--warn);border-radius:999px;transition:width .12s linear}
+  .meter-fill.calm{background:var(--ok)}
+  .meter-th{position:absolute;top:-4px;bottom:-4px;width:3px;background:var(--accent);border-radius:2px}
+  .meter-th span{position:absolute;top:-19px;left:50%;transform:translateX(-50%);font-size:10.5px;color:var(--accent);font-weight:700;white-space:nowrap}
+  #spark{width:100%;height:46px;display:block;margin-top:22px}
+  /* ---------- controls ---------- */
+  .controls{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+  .btn{
+    appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink);
+    font:inherit;font-weight:700;font-size:14.5px;padding:10px 16px;border-radius:10px;cursor:pointer;
+    display:inline-flex;align-items:center;gap:8px;min-height:46px;
+  }
+  .btn:active{transform:translateY(1px)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.shutter{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn input[type="file"]{display:none}
+  /* ---------- side panel ---------- */
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+  .panel h2{margin:0 0 4px;font-size:16px}
+  .panel .note{font-size:12.5px;color:var(--muted);margin:0 0 12px}
+  .ctl{margin:16px 0}
+  .ctl label{display:flex;justify-content:space-between;font-size:14px;font-weight:700;margin-bottom:6px}
+  .ctl label output{font-variant-numeric:tabular-nums;color:var(--accent);font-weight:800}
+  .ctl input[type="range"]{width:100%;min-height:36px;accent-color:var(--accent)}
+  .ctl .hint{font-size:12px;color:var(--muted);margin-top:2px}
+  .statgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+  .stat{background:var(--surface2);border-radius:10px;padding:10px 12px}
+  .stat .k{font-size:11.5px;color:var(--muted);font-weight:700}
+  .stat .n{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.3}
+  .checkline{display:flex;gap:10px;align-items:flex-start;font-size:14px;margin-top:14px}
+  .checkline input{width:22px;height:22px;margin-top:2px;accent-color:var(--accent);flex:none}
+  /* ---------- gallery ---------- */
+  section.gallery{margin-top:30px}
+  section.gallery .ghead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;border-bottom:2px solid var(--ink);padding-bottom:8px}
+  section.gallery h2{margin:0;font-size:20px}
+  section.gallery .gsub{font-size:13px;color:var(--muted)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:16px}
+  .shot{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .shot img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;cursor:zoom-in}
+  .shot .meta{padding:8px 10px 10px}
+  .shot .meta .time{font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums}
+  .shot .meta .how{font-size:11.5px;color:var(--muted)}
+  .shot .acts{display:flex;gap:8px;margin-top:8px}
+  .shot .acts a,.shot .acts button{
+    flex:1;text-align:center;font-size:12.5px;font-weight:700;padding:8px 4px;border-radius:8px;min-height:38px;
+    border:1px solid var(--line);background:var(--surface2);color:var(--ink);text-decoration:none;cursor:pointer;font:inherit;
+    display:inline-flex;align-items:center;justify-content:center;
+  }
+  .empty{margin-top:16px;border:1.5px dashed var(--line);border-radius:12px;padding:26px 18px;text-align:center;color:var(--muted);font-size:14px}
+  /* ---------- memo ---------- */
+  section.memo{margin-top:34px;display:grid;grid-template-columns:1fr;gap:14px}
+  @media(min-width:880px){ section.memo{grid-template-columns:1fr 1fr} }
+  .memo .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px}
+  .memo h3{margin:0 0 8px;font-size:15.5px}
+  .memo ol,.memo ul{margin:0;padding-left:20px;font-size:13.5px}
+  .memo li{margin:5px 0}
+  .err{
+    display:none;margin-top:12px;background:#fdeceb;border:1px solid #f0b6b1;color:#7c1a12;
+    border-radius:10px;padding:12px 14px;font-size:13.5px;
+  }
+  @media (prefers-color-scheme: dark){ .err{background:#3a1713;border-color:#6e2a22;color:#ffb4a8} }
+  .err.show{display:block}
+  /* ---------- modal ---------- */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.88);display:none;z-index:50;padding:18px;align-items:center;justify-content:center;flex-direction:column;gap:14px}
+  .modal.open{display:flex}
+  .modal img{max-width:100%;max-height:76vh;border-radius:8px}
+  .modal .mrow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  .modal .mrow a,.modal .mrow button{
+    background:#fff;color:#111;border:none;font:inherit;font-weight:700;font-size:14px;
+    padding:11px 18px;border-radius:10px;text-decoration:none;cursor:pointer;min-height:46px;
+    display:inline-flex;align-items:center;
+  }
+  .modal .cap{color:#fff;font-size:13px;font-variant-numeric:tabular-nums}
+  footer{margin-top:40px;font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <h1>二秒カメラ<span class="poc">POC</span></h1>
+    <p class="lead">動きを止めた瞬間を、カメラが見つけて撮影する。</p>
+    <p class="sub">踊りや練習の途中、ピタッと止まったら自動でシャッター。撮影を人に頼まなくても、自分の好きな瞬間を残すための試作です。</p>
+  </header>
+
+  <div class="layout">
+    <div>
+      <!-- ======= STAGE ======= -->
+      <div class="stage" id="stage">
+        <video id="video" playsinline muted autoplay></video>
+        <div class="placeholder" id="placeholder">
+          <div class="big">カメラはまだ起動していません</div>
+          <div class="small">下の「カメラを起動」から始めてください。カメラが使えない環境では「デモで試す」で、動く→止まる→自動撮影の流れをそのまま再現できます。</div>
+        </div>
+        <div class="pill" id="statusPill" data-state="idle"><span class="dot"></span><span id="statusText">待機中</span></div>
+        <div class="count-badge" id="countBadge">撮影 0 枚</div>
+        <div class="stillbar" id="stillbar">
+          <div class="label"><span>静止のたまり具合</span><span id="stillLabel">0.0 / 2.0 秒</span></div>
+          <div class="track"><div class="fill" id="stillFill"></div></div>
+        </div>
+        <div class="flash" id="flash"></div>
+      </div>
+
+      <div class="err" id="errBox" role="alert"></div>
+
+      <!-- ======= METER ======= -->
+      <div class="meter-card">
+        <div class="meter-head">
+          <span class="t">いまの動き量</span>
+          <span class="v" id="meterVal">—</span>
+        </div>
+        <div class="meter-track">
+          <div class="meter-fill" id="meterFill"></div>
+          <div class="meter-th" id="meterTh"><span>静止ライン</span></div>
+        </div>
+        <canvas id="spark" width="640" height="46" aria-hidden="true"></canvas>
+      </div>
+
+      <!-- ======= CONTROLS ======= -->
+      <div class="controls">
+        <button class="btn primary" id="btnCam">カメラを起動</button>
+        <button class="btn" id="btnDemo">デモで試す</button>
+        <label class="btn" for="fileVideo">動画ファイルで試す</label>
+        <input type="file" id="fileVideo" accept="video/*" hidden />
+        <button class="btn shutter" id="btnShutter" disabled>今すぐ撮る</button>
+        <button class="btn" id="btnFlip" disabled>カメラ切替</button>
+        <button class="btn" id="btnStop" disabled>停止</button>
+      </div>
+    </div>
+
+    <!-- ======= SETTINGS ======= -->
+    <aside class="panel">
+      <h2>静止判定の調整</h2>
+      <p class="note">POCでは姿勢推定の代わりに、映像の変化量（動き量）で判定しています。踊りに合わせて触ってみてください。</p>
+
+      <div class="ctl">
+        <label for="rngStill">静止時間 <output id="outStill">2.0 秒</output></label>
+        <input type="range" id="rngStill" min="1" max="3" step="0.5" value="2" />
+        <div class="hint">この時間ずっと静止が続いたら撮影します。名前の由来の「二秒」が初期値です。</div>
+      </div>
+
+      <div class="ctl">
+        <label for="rngSens">感度 <output id="outSens">ふつう</output></label>
+        <input type="range" id="rngSens" min="1" max="100" step="1" value="50" />
+        <div class="hint">高くすると小さな揺れでも「動いている」と判定し、撮り逃しが増えます。低くすると撮りすぎます。</div>
+      </div>
+
+      <div class="ctl">
+        <label for="rngCool">撮影後のクールダウン <output id="outCool">3 秒</output></label>
+        <input type="range" id="rngCool" min="0" max="10" step="1" value="3" />
+        <div class="hint">撮ったあと、この時間は次を撮りません。</div>
+      </div>
+
+      <label class="checkline">
+        <input type="checkbox" id="chkRearm" checked />
+        <span>同じポーズの連続撮影を防ぐ（一度動き出すまで次を撮らない）</span>
+      </label>
+      <label class="checkline">
+        <input type="checkbox" id="chkMirror" checked />
+        <span>プレビューを鏡像にする（内カメラのとき）</span>
+      </label>
+
+      <div class="statgrid">
+        <div class="stat"><div class="k">撮影枚数</div><div class="n" id="statShots">0</div></div>
+        <div class="stat"><div class="k">判定状態</div><div class="n" id="statState" style="font-size:15px;padding-top:4px">待機中</div></div>
+        <div class="stat"><div class="k">最長静止</div><div class="n" id="statLongest">0.0秒</div></div>
+        <div class="stat"><div class="k">稼働時間</div><div class="n" id="statUptime">0:00</div></div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ======= GALLERY ======= -->
+  <section class="gallery">
+    <div class="ghead">
+      <h2>撮れた写真</h2>
+      <span class="gsub">写真はこの画面の中だけにあります。残したいものは「保存」から端末に書き出してください。</span>
+    </div>
+    <div class="empty" id="emptyMsg">まだ写真はありません。カメラの前で動いて、ピタッと止まってみてください。</div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <!-- ======= MEMO ======= -->
+  <section class="memo">
+    <div class="card">
+      <h3>撮影の流れ</h3>
+      <ol>
+        <li>カメラを起動する（またはデモ／動画ファイル）</li>
+        <li>映像の動き量を常時測る</li>
+        <li>動き量が「静止ライン」を下回った状態が設定時間（初期値2秒）続いたら撮影</li>
+        <li>写真が下のギャラリーに増える。一度動き出すまで同じポーズは撮らない</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>POCで確かめたいこと</h3>
+      <ul>
+        <li>静止時間 1秒・2秒・3秒で撮れ方がどう変わるか</li>
+        <li>決めポーズと、踊りの途中の「動きの谷間」を区別できるか</li>
+        <li>ゆっくりした所作（日本舞踊など）と「止まった」の境界</li>
+        <li>感度を変えたときの撮りすぎ・撮り逃し</li>
+        <li>本番では MediaPipe の姿勢ランドマーク判定に置き換え予定。このPOCは映像の変化量で代用しています</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    二秒カメラ POC — 映像は端末のブラウザ内だけで処理し、サーバーへは送りません。動画としては保存せず、静止画だけを残します。
+  </footer>
+</div>
+
+<!-- ======= MODAL ======= -->
+<div class="modal" id="modal" role="dialog" aria-modal="true">
+  <img id="modalImg" alt="撮影した写真の拡大表示" />
+  <div class="cap" id="modalCap"></div>
+  <div class="mrow">
+    <a id="modalDl" href="#" download="nibyou.jpg">保存する</a>
+    <button id="modalDel" type="button">削除する</button>
+    <button id="modalClose" type="button">閉じる</button>
+  </div>
+</div>
+
+<canvas id="demoCanvas" width="640" height="480" style="display:none"></canvas>
+<canvas id="sampleCanvas" width="64" height="48" style="display:none"></canvas>
+<canvas id="shotCanvas" style="display:none"></canvas>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+  var video = $("video"), placeholder = $("placeholder"),
+      pill = $("statusPill"), statusText = $("statusText"),
+      stillFill = $("stillFill"), stillLabel = $("stillLabel"), stillbar = $("stillbar"),
+      flash = $("flash"), errBox = $("errBox"),
+      meterFill = $("meterFill"), meterVal = $("meterVal"), meterTh = $("meterTh"),
+      spark = $("spark"), sctx = spark.getContext("2d"),
+      sampleCanvas = $("sampleCanvas"), smp = sampleCanvas.getContext("2d", {willReadFrequently:true}),
+      shotCanvas = $("shotCanvas"),
+      grid = $("grid"), emptyMsg = $("emptyMsg"), countBadge = $("countBadge");
+
+  var state = {
+    mode: null,            // 'cam' | 'demo' | 'file'
+    stream: null,
+    facing: "user",
+    raf: null,
+    lastSample: 0,
+    prevData: null,
+    motion: 0,
+    stillSince: null,      // timestamp when stillness began
+    longestStill: 0,
+    armed: true,           // can shoot
+    moveSeenAt: 0,         // last time clear movement seen (for re-arm)
+    cooldownUntil: 0,
+    shots: 0,
+    startedAt: null,
+    uptimeTimer: null,
+    history: [],
+    demoTimer: null,
+    audio: null,
+    modalIndex: -1
+  };
+  var photos = []; // {url, time, how}
+
+  function settings(){
+    return {
+      stillSec: parseFloat($("rngStill").value),
+      sens: parseInt($("rngSens").value, 10),
+      coolSec: parseInt($("rngCool").value, 10),
+      rearm: $("chkRearm").checked,
+      mirror: $("chkMirror").checked
+    };
+  }
+  // sensitivity -> motion threshold. Higher sens = lower threshold (stricter stillness)
+  function threshold(){
+    var s = settings().sens; // 1..100
+    return 22 - (s / 100) * 19; // 100 -> 3.0 , 50 -> 12.5 , 1 -> ~21.8
+  }
+  var METER_MAX = 40;
+
+  function sensLabel(v){
+    if (v >= 75) return "高い";
+    if (v >= 40) return "ふつう";
+    if (v >= 20) return "低め";
+    return "低い";
+  }
+  function syncOutputs(){
+    $("outStill").textContent = parseFloat($("rngStill").value).toFixed(1) + " 秒";
+    $("outSens").textContent = sensLabel(parseInt($("rngSens").value,10));
+    $("outCool").textContent = $("rngCool").value + " 秒";
+    var th = threshold();
+    meterTh.style.left = "calc(" + (th / METER_MAX * 100) + "% - 1px)";
+    stillLabel.textContent = "0.0 / " + settings().stillSec.toFixed(1) + " 秒";
+  }
+  ["rngStill","rngSens","rngCool"].forEach(function(id){
+    $(id).addEventListener("input", syncOutputs);
+  });
+  $("chkMirror").addEventListener("change", applyMirror);
+  function applyMirror(){
+    var m = settings().mirror && state.mode === "cam" && state.facing === "user";
+    video.classList.toggle("mirror", !!m);
+  }
+
+  function showError(msg){
+    errBox.textContent = msg;
+    errBox.classList.add("show");
+  }
+  function clearError(){ errBox.classList.remove("show"); errBox.textContent = ""; }
+
+  function setStatus(stateName, text){
+    pill.setAttribute("data-state", stateName);
+    statusText.textContent = text;
+    $("statState").textContent = text;
+  }
+
+  /* ---------- audio click ---------- */
+  function click(){
+    try{
+      if (!state.audio) state.audio = new (window.AudioContext || window.webkitAudioContext)();
+      var ac = state.audio;
+      if (ac.state === "suspended") ac.resume();
+      var o = ac.createOscillator(), g = ac.createGain();
+      o.type = "square"; o.frequency.value = 1800;
+      g.gain.setValueAtTime(0.12, ac.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.09);
+      o.connect(g); g.connect(ac.destination);
+      o.start(); o.stop(ac.currentTime + 0.1);
+    }catch(e){ /* sound is optional */ }
+  }
+
+  /* ---------- capture ---------- */
+  function capture(how){
+    var w = video.videoWidth, h = video.videoHeight;
+    if (!w || !h) return;
+    shotCanvas.width = w; shotCanvas.height = h;
+    var c = shotCanvas.getContext("2d");
+    if (state.mode === "cam" && state.facing === "user" && settings().mirror){
+      c.translate(w, 0); c.scale(-1, 1);
+    }
+    c.drawImage(video, 0, 0, w, h);
+    var url = shotCanvas.toDataURL("image/jpeg", 0.85);
+    var now = new Date();
+    photos.unshift({ url: url, time: now, how: how });
+    state.shots++;
+    renderGallery();
+    flash.classList.remove("go"); void flash.offsetWidth; flash.classList.add("go");
+    click();
+    countBadge.textContent = "撮影 " + state.shots + " 枚";
+    $("statShots").textContent = state.shots;
+  }
+
+  function renderGallery(){
+    grid.innerHTML = "";
+    emptyMsg.style.display = photos.length ? "none" : "block";
+    photos.forEach(function(p, i){
+      var d = document.createElement("div"); d.className = "shot";
+      var img = document.createElement("img");
+      img.src = p.url; img.alt = "自動撮影された写真 " + p.time.toLocaleTimeString("ja-JP");
+      img.addEventListener("click", function(){ openModal(i); });
+      var meta = document.createElement("div"); meta.className = "meta";
+      var t = document.createElement("div"); t.className = "time";
+      t.textContent = p.time.toLocaleTimeString("ja-JP");
+      var how = document.createElement("div"); how.className = "how"; how.textContent = p.how;
+      var acts = document.createElement("div"); acts.className = "acts";
+      var a = document.createElement("a");
+      a.href = p.url; a.textContent = "保存";
+      a.setAttribute("download", "nibyou-" + p.time.getTime() + ".jpg");
+      var del = document.createElement("button"); del.type = "button"; del.textContent = "削除";
+      del.addEventListener("click", function(){
+        photos.splice(i, 1); renderGallery();
+      });
+      acts.appendChild(a); acts.appendChild(del);
+      meta.appendChild(t); meta.appendChild(how); meta.appendChild(acts);
+      d.appendChild(img); d.appendChild(meta);
+      grid.appendChild(d);
+    });
+  }
+
+  /* ---------- modal ---------- */
+  function openModal(i){
+    state.modalIndex = i;
+    var p = photos[i]; if (!p) return;
+    $("modalImg").src = p.url;
+    $("modalCap").textContent = p.time.toLocaleString("ja-JP") + " ・ " + p.how;
+    var dl = $("modalDl");
+    dl.href = p.url; dl.setAttribute("download", "nibyou-" + p.time.getTime() + ".jpg");
+    $("modal").classList.add("open");
+  }
+  function closeModal(){ $("modal").classList.remove("open"); state.modalIndex = -1; }
+  $("modalClose").addEventListener("click", closeModal);
+  $("modal").addEventListener("click", function(e){ if (e.target === $("modal")) closeModal(); });
+  $("modalDel").addEventListener("click", function(){
+    if (state.modalIndex >= 0){ photos.splice(state.modalIndex, 1); renderGallery(); }
+    closeModal();
+  });
+
+  /* ---------- motion sampling ---------- */
+  function sampleMotion(){
+    if (!video.videoWidth) return null;
+    smp.drawImage(video, 0, 0, sampleCanvas.width, sampleCanvas.height);
+    var data;
+    try{ data = smp.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height).data; }
+    catch(e){ return null; }
+    if (!state.prevData){ state.prevData = data; return 0; }
+    var sum = 0, n = 0;
+    for (var i = 0; i < data.length; i += 16){ // every 4th pixel
+      var cur = (data[i] + data[i+1] + data[i+2]) / 3;
+      var prv = (state.prevData[i] + state.prevData[i+1] + state.prevData[i+2]) / 3;
+      sum += Math.abs(cur - prv); n++;
+    }
+    state.prevData = data;
+    return sum / n; // average per-pixel brightness change
+  }
+
+  function drawSpark(){
+    var w = spark.width, h = spark.height;
+    sctx.clearRect(0, 0, w, h);
+    var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    // threshold line
+    var th = threshold();
+    var ty = h - (th / METER_MAX) * h;
+    sctx.strokeStyle = "#d92b20"; sctx.setLineDash([5,4]); sctx.beginPath();
+    sctx.moveTo(0, ty); sctx.lineTo(w, ty); sctx.stroke(); sctx.setLineDash([]);
+    // history line
+    sctx.strokeStyle = dark ? "#e8e8e4" : "#333330"; sctx.lineWidth = 1.6; sctx.beginPath();
+    var hist = state.history;
+    for (var i = 0; i < hist.length; i++){
+      var x = (i / 119) * w;
+      var y = h - Math.min(hist[i], METER_MAX) / METER_MAX * h;
+      if (i === 0) sctx.moveTo(x, y); else sctx.lineTo(x, y);
+    }
+    sctx.stroke(); sctx.lineWidth = 1;
+  }
+
+  function loop(now){
+    if (!state.mode) return;
+    state.raf = requestAnimationFrame(loop);
+    if (now - state.lastSample < 120) return;
+    state.lastSample = now;
+
+    var m = sampleMotion();
+    if (m === null) return;
+    state.motion = m;
+    state.history.push(m); if (state.history.length > 120) state.history.shift();
+
+    var th = threshold();
+    var s = settings();
+    var pct = Math.min(m / METER_MAX * 100, 100);
+    meterFill.style.width = pct + "%";
+    meterFill.classList.toggle("calm", m < th);
+    meterVal.textContent = "動き量 " + m.toFixed(1) + " ／ 静止ライン " + th.toFixed(1) + (m < th ? "（静止中）" : "（動いている）");
+    drawSpark();
+
+    var nowMs = performance.now();
+    var inCooldown = nowMs < state.cooldownUntil;
+
+    if (m >= th){
+      // moving
+      state.stillSince = null;
+      state.moveSeenAt = nowMs;
+      if (!state.armed && nowMs - state.moveSeenAt >= 0){ /* re-arm handled below */ }
+      if (!s.rearm || true) { /* movement noted */ }
+      if (!state.armed && (nowMs - state.moveSeenAt) >= 0 && m >= th){
+        // clear movement -> allow next shot (after 0.35s of movement accumulated via moveTrack)
+      }
+      state._moveAccum = (state._moveAccum || 0) + 120;
+      if (state._moveAccum >= 350) state.armed = true;
+      stillFill.style.width = "0%";
+      stillbar.classList.remove("done");
+      stillLabel.textContent = "0.0 / " + s.stillSec.toFixed(1) + " 秒";
+      if (inCooldown) setStatus("wait", "クールダウン中");
+      else setStatus("moving", "動いている");
+      return;
+    }
+
+    // still
+    state._moveAccum = 0;
+    if (state.stillSince === null) state.stillSince = nowMs;
+    var elapsed = (nowMs - state.stillSince) / 1000;
+    if (elapsed > state.longestStill){
+      state.longestStill = elapsed;
+      $("statLongest").textContent = elapsed.toFixed(1) + "秒";
+    }
+    var prog = Math.min(elapsed / s.stillSec, 1);
+    stillFill.style.width = (prog * 100) + "%";
+    stillLabel.textContent = elapsed.toFixed(1) + " / " + s.stillSec.toFixed(1) + " 秒";
+
+    if (inCooldown){
+      setStatus("wait", "クールダウン中");
+      return;
+    }
+    if (!state.armed){
+      setStatus("still", "静止中（次のポーズ待ち）");
+      return;
+    }
+    if (elapsed >= s.stillSec){
+      stillbar.classList.add("done");
+      setStatus("shot", "撮影しました");
+      capture("自動撮影 ・ 静止 " + s.stillSec.toFixed(1) + "秒で検知");
+      state.armed = s.rearm ? false : true;
+      if (!s.rearm) state.armed = true;
+      state.cooldownUntil = nowMs + s.coolSec * 1000;
+      state.stillSince = nowMs; // restart counting so a held pose doesn't refire instantly when rearm is off
+      setTimeout(function(){ stillbar.classList.remove("done"); }, 500);
+    } else {
+      setStatus("still", "静止中… そのまま");
+    }
+  }
+
+  /* ---------- start / stop ---------- */
+  function beginUI(){
+    placeholder.style.display = "none";
+    $("btnShutter").disabled = false;
+    $("btnStop").disabled = false;
+    $("btnFlip").disabled = state.mode !== "cam";
+    state.startedAt = Date.now();
+    clearInterval(state.uptimeTimer);
+    state.uptimeTimer = setInterval(function(){
+      var sec = Math.floor((Date.now() - state.startedAt) / 1000);
+      $("statUptime").textContent = Math.floor(sec/60) + ":" + ("0" + (sec%60)).slice(-2);
+    }, 1000);
+    state.prevData = null; state.stillSince = null; state.armed = true; state.history = [];
+    cancelAnimationFrame(state.raf);
+    state.raf = requestAnimationFrame(loop);
+  }
+
+  function stopAll(){
+    cancelAnimationFrame(state.raf);
+    clearInterval(state.uptimeTimer);
+    if (state.demoTimer){ cancelAnimationFrame(state.demoTimer); state.demoTimer = null; }
+    if (state.stream){ state.stream.getTracks().forEach(function(t){ t.stop(); }); state.stream = null; }
+    video.pause(); video.srcObject = null; video.removeAttribute("src"); video.load();
+    state.mode = null;
+    placeholder.style.display = "flex";
+    $("btnShutter").disabled = true; $("btnStop").disabled = true; $("btnFlip").disabled = true;
+    setStatus("idle", "待機中");
+    meterVal.textContent = "—"; meterFill.style.width = "0%";
+    stillFill.style.width = "0%";
+  }
+
+  $("btnCam").addEventListener("click", function(){
+    clearError();
+    stopAll();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      showError("このブラウザではカメラ（getUserMedia）が使えませんでした。Safari / Chrome の最新版で、HTTPSのページから開いてください。「デモで試す」でも流れは確認できます。");
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: state.facing, width: { ideal: 1280 }, height: { ideal: 960 } },
+      audio: false
+    }).then(function(stream){
+      state.mode = "cam"; state.stream = stream;
+      video.srcObject = stream;
+      video.play().catch(function(){});
+      applyMirror();
+      beginUI();
+      setStatus("moving", "カメラ起動中");
+    }).catch(function(err){
+      showError("カメラを起動できませんでした（" + (err && err.name ? err.name : "エラー") + "）。許可ダイアログで「許可」を選んでいるか、他のアプリがカメラを使っていないか確認してください。");
+    });
+  });
+
+  $("btnFlip").addEventListener("click", function(){
+    state.facing = state.facing === "user" ? "environment" : "user";
+    $("btnCam").click();
+  });
+
+  $("btnStop").addEventListener("click", stopAll);
+
+  $("btnShutter").addEventListener("click", function(){
+    if (!state.mode) return;
+    capture("手動シャッター");
+    setStatus("shot", "撮影しました（手動）");
+  });
+
+  $("fileVideo").addEventListener("change", function(e){
+    var f = e.target.files && e.target.files[0];
+    if (!f) return;
+    clearError(); stopAll();
+    state.mode = "file";
+    video.src = URL.createObjectURL(f);
+    video.loop = true; video.muted = true;
+    video.play().catch(function(){});
+    beginUI();
+    setStatus("moving", "動画ファイルで判定中");
+  });
+
+  /* ---------- demo ---------- */
+  var demo = { t0: 0, phase: 0 };
+  function drawDemo(now){
+    if (state.mode !== "demo") return;
+    state.demoTimer = requestAnimationFrame(drawDemo);
+    var dc = $("demoCanvas"), ctx = dc.getContext("2d");
+    var W = dc.width, H = dc.height;
+    var cycle = ((now - demo.t0) / 1000) % 9; // 0-4s move, 4-9s still
+    var moving = cycle < 4;
+    // stage
+    ctx.fillStyle = "#2b2118"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#4a3826"; ctx.fillRect(0, H - 70, W, 70);
+    ctx.fillStyle = "#c8a165"; ctx.beginPath(); ctx.ellipse(W/2, H - 66, 190, 16, 0, 0, Math.PI*2); ctx.fill();
+    // figure: simple dancer silhouette
+    var cx = W/2, baseY = H - 70;
+    var sway = moving ? Math.sin(now / 160) * 26 : 0;
+    var bob  = moving ? Math.abs(Math.sin(now / 210)) * 16 : 0;
+    var armA = moving ? Math.sin(now / 190) * 0.9 : 0.55;
+    var hipY = baseY - 120 - bob, headY = hipY - 78;
+    ctx.strokeStyle = "#f3e2c7"; ctx.fillStyle = "#f3e2c7"; ctx.lineWidth = 13; ctx.lineCap = "round";
+    // legs
+    ctx.beginPath();
+    ctx.moveTo(cx + sway*0.4, hipY);
+    ctx.lineTo(cx - 34 + (moving ? Math.sin(now/170)*14 : 6), baseY - bob*0.4);
+    ctx.moveTo(cx + sway*0.4, hipY);
+    ctx.lineTo(cx + 38 + (moving ? Math.cos(now/180)*14 : 10), baseY - bob*0.4);
+    ctx.stroke();
+    // torso
+    ctx.beginPath(); ctx.moveTo(cx + sway*0.4, hipY); ctx.lineTo(cx + sway, headY + 26); ctx.stroke();
+    // arms
+    ctx.beginPath();
+    ctx.moveTo(cx + sway, headY + 34);
+    ctx.lineTo(cx + sway - 62*Math.cos(armA), headY + 34 - 62*Math.sin(armA) - 10);
+    ctx.moveTo(cx + sway, headY + 34);
+    ctx.lineTo(cx + sway + 62*Math.cos(armA + 0.4), headY + 34 - 62*Math.sin(armA + 0.4) - 10);
+    ctx.stroke();
+    // head
+    ctx.beginPath(); ctx.arc(cx + sway, headY, 21, 0, Math.PI*2); ctx.fill();
+    // label
+    ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.font = "bold 20px sans-serif"; ctx.lineWidth = 1;
+    ctx.fillText(moving ? "デモ：動いています" : "デモ：ピタッと止まっています", 18, 34);
+  }
+  $("btnDemo").addEventListener("click", function(){
+    clearError(); stopAll();
+    var dc = $("demoCanvas");
+    if (!dc.captureStream){
+      showError("このブラウザではデモ映像の生成（captureStream）が使えませんでした。");
+      return;
+    }
+    state.mode = "demo";
+    demo.t0 = performance.now();
+    state.demoTimer = requestAnimationFrame(drawDemo);
+    var stream = dc.captureStream(30);
+    state.stream = stream;
+    video.srcObject = stream;
+    video.play().catch(function(){});
+    video.classList.remove("mirror");
+    beginUI();
+    setStatus("moving", "デモ再生中");
+  });
+
+  syncOutputs();
+  renderGallery();
+})();
+</script>
+</body>
+</html>
